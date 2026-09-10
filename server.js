@@ -6,17 +6,23 @@ const archiver = require('archiver');
 
 const app = express();
 
+// Auto create uploads folder agar exist nahi karta (Crash rokne ke liye)
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const upload = multer({ 
     dest: 'uploads/', 
-    limits: { fileSize: 300 * 1024 * 1024 } // 300MB
+    limits: { fileSize: 300 * 1024 * 1024 } 
 });
 
-let vault = {}; // { "4821": { files: [...], timestamp: 12345 } }
+let vault = {};
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Background auto-cleanup: 15 minutes purani files server se delete
+// Auto-delete after 15 mins
 setInterval(() => {
     const now = Date.now();
     for (const pin in vault) {
@@ -29,11 +35,188 @@ setInterval(() => {
     }
 }, 60 * 1000);
 
-// Single Page Modern UI
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
     <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>DropVault - Fast Share</title>
+        <style>
+            :root { --primary: #38bdf8; --border: #334155; }
+            * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+            body { background: radial-gradient(circle at top, #1e293b, #0b1120); color: #f8fafc; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 16px; }
+            .container { width: 100%; max-width: 400px; background: rgba(30, 41, 59, 0.9); backdrop-filter: blur(10px); border-radius: 18px; padding: 24px; border: 1px solid var(--border); box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
+            h1 { font-size: 22px; color: var(--primary); text-align: center; margin-bottom: 20px; }
+            .box { background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; text-align: center; }
+            .dropzone { border: 2px dashed #475569; border-radius: 10px; padding: 20px 10px; cursor: pointer; display: block; }
+            input[type="file"] { display: none; }
+            input[type="number"] { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0b1120; color: #fff; font-size: 20px; text-align: center; letter-spacing: 6px; outline: none; margin-bottom: 10px; }
+            button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: bold; cursor: pointer; }
+            .btn-blue { background: #0284c7; color: white; margin-top: 10px; }
+            .btn-green { background: #10b981; color: white; }
+            .progress-bar-bg { width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden; margin-top: 6px; }
+            .progress-bar-fill { width: 0%; height: 100%; background: var(--primary); }
+            .pin-val { font-size: 40px; font-weight: 800; letter-spacing: 6px; color: #4ade80; margin: 10px 0; }
+            .file-item { display: flex; justify-content: space-between; align-items: center; background: #0b1120; padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+            .file-item a { color: var(--primary); text-decoration: none; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>⚡ DropVault</h1>
+            
+            <div class="box">
+                <label class="dropzone" for="fileInput">
+                    <span id="labelTxt">📁 Choose Files / Photos / Videos</span>
+                    <div id="countTxt" style="color:var(--primary); font-size:13px; margin-top:6px; font-weight:bold;"></div>
+                </label>
+                <input type="file" id="fileInput" multiple onchange="filesPicked()">
+                
+                <button class="btn-blue" id="upBtn" onclick="uploadFiles()" style="display:none;">Upload & Get 4-Digit PIN</button>
+
+                <div id="progWrap" style="display:none; margin-top:12px; text-align:left;">
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#94a3b8;">
+                        <span>Uploading...</span><span id="pNum">0%</span>
+                    </div>
+                    <div class="progress-bar-bg"><div class="progress-bar-fill" id="pBar"></div></div>
+                </div>
+
+                <div id="pinBox" style="display:none; margin-top:14px; background:#0b1120; padding:14px; border-radius:10px; border:1px solid #10b981;">
+                    <div style="font-size:12px; color:#94a3b8;">SHARE THIS 4-DIGIT PIN:</div>
+                    <div class="pin-val" id="showPin">0000</div>
+                    <div style="font-size:12px; color:#f59e0b;" id="tClock">⏱ Expires in: 10:00</div>
+                </div>
+            </div>
+
+            <div class="box">
+                <input type="number" id="codeIn" placeholder="ENTER PIN" maxlength="4">
+                <button class="btn-green" id="downBtn" onclick="getFiles()">View & Download Files</button>
+                <div id="fList" style="display:none; margin-top:12px; text-align:left; max-height:180px; overflow-y:auto;"></div>
+            </div>
+        </div>
+
+        <script>
+            let files = [];
+            function filesPicked() {
+                const inp = document.getElementById('fileInput');
+                if (inp.files.length > 0) {
+                    files = inp.files;
+                    document.getElementById('labelTxt').innerText = "Selected:";
+                    document.getElementById('countTxt').innerText = files.length + " file(s) ready";
+                    document.getElementById('upBtn').style.display = 'block';
+                }
+            }
+
+            function uploadFiles() {
+                if (!files.length) return;
+                const btn = document.getElementById('upBtn');
+                btn.disabled = true;
+                btn.innerText = "Uploading...";
+                document.getElementById('progWrap').style.display = 'block';
+
+                const fd = new FormData();
+                for (let i = 0; i < files.length; i++) fd.append('files', files[i]);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/upload', true);
+                xhr.upload.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        document.getElementById('pBar').style.width = pct + '%';
+                        document.getElementById('pNum').innerText = pct + '%';
+                    }
+                };
+                xhr.onload = () => {
+                    btn.disabled = false;
+                    btn.innerText = "Upload & Get 4-Digit PIN";
+                    document.getElementById('progWrap').style.display = 'none';
+                    if (xhr.status === 200) {
+                        const res = JSON.parse(xhr.responseText);
+                        document.getElementById('showPin').innerText = res.pin;
+                        document.getElementById('pinBox').style.display = 'block';
+                        startTimer(600);
+                    } else alert("Upload error!");
+                };
+                xhr.send(fd);
+            }
+
+            function startTimer(sec) {
+                const el = document.getElementById('tClock');
+                const t = setInterval(() => {
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    el.innerText = '⏱ Expires in: ' + m + ':' + (s < 10 ? '0' : '') + s;
+                    if (--sec < 0) { clearInterval(t); el.innerText = "Expired"; }
+                }, 1000);
+            }
+
+            async function getFiles() {
+                const pin = document.getElementById('codeIn').value.trim();
+                if (pin.length !== 4) return alert("4-digit PIN daalein!");
+                const list = document.getElementById('fList');
+                list.innerHTML = "Checking...";
+                list.style.display = 'block';
+
+                try {
+                    const res = await fetch('/api/check/' + pin);
+                    const data = await res.json();
+                    if (!res.ok) { list.innerHTML = data.error; return; }
+
+                    let h = '';
+                    data.files.forEach((f, i) => {
+                        h += '<div class="file-item"><span style="max-width:180px; overflow:hidden; text-overflow:ellipsis;">' + f.name + '</span><a href="/api/file/' + pin + '/' + i + '" download="' + f.name + '">Save</a></div>';
+                    });
+                    if (data.files.length > 1) {
+                        h += '<button onclick="location.href=\\'/api/zip/' + pin + '\\'" style="margin-top:8px; background:#475569; padding:8px; font-size:12px;">📦 Download All in One ZIP</button>';
+                    }
+                    list.innerHTML = h;
+                } catch(e) { list.innerHTML = "Connection failed"; }
+            }
+        </script>
+    </body>
+    </html>
+    `);
+});
+
+app.post('/api/upload', upload.array('files', 20), (req, res) => {
+    if (!req.files || req.files.length === 0) return res.status(400).json({ error: "No files" });
+    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+    vault[pin] = {
+        files: req.files.map(f => ({ path: f.path, name: f.originalname })),
+        timestamp: Date.now()
+    };
+    res.json({ pin });
+});
+
+app.get('/api/check/:pin', (req, res) => {
+    const item = vault[req.params.pin];
+    if (!item) return res.status(404).json({ error: "Galat PIN ya file expire ho chuki hai!" });
+    res.json({ files: item.files.map(f => ({ name: f.name })) });
+});
+
+app.get('/api/file/:pin/:index', (req, res) => {
+    const item = vault[req.params.pin];
+    if (!item) return res.status(404).send("Expired");
+    const file = item.files[parseInt(req.params.index)];
+    if (!file || !fs.existsSync(file.path)) return res.status(404).send("Missing");
+    res.download(file.path, file.name);
+});
+
+app.get('/api/zip/:pin', (req, res) => {
+    const item = vault[req.params.pin];
+    if (!item) return res.status(404).send("Expired");
+    res.attachment(`bundle_${req.params.pin}.zip`);
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    archive.pipe(res);
+    item.files.forEach(f => {
+        if (fs.existsSync(f.path)) archive.file(f.path, { name: f.name });
+    });
+    archive.finalize();
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => console.log('Server running on ' + PORT));
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
