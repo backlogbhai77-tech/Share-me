@@ -336,8 +336,8 @@ input[type=file] {
 }
 
 .file-preview {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     border-radius: 8px;
     display: grid;
     place-items: center;
@@ -586,7 +586,7 @@ input[type=file] {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* Single & Multiple Download Card in Receiver Tab */
+/* Vault Found Card & Preview Canvas */
 .vault-found-card {
     background: rgba(14, 20, 31, 0.8);
     border: 1px solid rgba(56, 189, 248, 0.25);
@@ -608,39 +608,23 @@ input[type=file] {
     margin-bottom: 12px;
 }
 
-/* ---------------- STATS / USP ---------------- */
-
-.features {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    margin-top: 16px;
-}
-
-.feature-item {
-    text-align: center;
-    padding: 12px 6px;
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.02);
+.preview-container {
+    width: 100%;
+    max-height: 200px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
     border: 1px solid var(--border);
 }
 
-.feature-icon {
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    margin-bottom: 6px;
-}
-
-.feature-icon svg {
-    width: 18px;
-    height: 18px;
-}
-
-.feature-text {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--muted);
+.preview-container img, .preview-container video {
+    width: 100%;
+    max-height: 200px;
+    object-fit: contain;
 }
 
 /* ---------------- PROGRESS ---------------- */
@@ -806,27 +790,6 @@ input[type=file] {
                     Expires in 10:00
                 </div>
             </div>
-
-            <div class="features">
-                <div class="feature-item">
-                    <div class="feature-icon">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"/></svg>
-                    </div>
-                    <div class="feature-text">Zero Setup</div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                    </div>
-                    <div class="feature-text">End-to-End</div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                    </div>
-                    <div class="feature-text">Direct Speed</div>
-                </div>
-            </div>
         </section>
 
         <!-- RECEIVE PANEL -->
@@ -845,7 +808,6 @@ input[type=file] {
                 <div style="font-size: 11px; color: var(--muted);">Verifying key with server...</div>
             </div>
 
-            <!-- Vault Result Area -->
             <div id="downloadResult"></div>
         </section>
     </main>
@@ -1049,7 +1011,6 @@ document.getElementById('pinInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') verifyAndFetchVault();
 });
 
-// Receiver Side: Verify Code and Show Files in UI (No premature auto-download popup)
 async function verifyAndFetchVault() {
     const pin = document.getElementById('pinInput').value.trim();
     if (!/^\d{4}$/.test(pin)) return showToast('Enter a valid 4-digit key');
@@ -1071,51 +1032,61 @@ async function verifyAndFetchVault() {
 
         if (!res.ok) throw new Error(data.error || 'Invalid or expired key');
 
-        // SINGLE FILE CARD: User gets full site view, then clicks download
+        // SINGLE FILE PREVIEW + DOWNLOAD
         if (data.files.length === 1) {
             const singleFile = data.files[0];
+            const viewUrl = `/api/view/${encodeURIComponent(pin)}/0`;
+            const isImg = singleFile.type && singleFile.type.startsWith('image/');
+            const isVid = singleFile.type && singleFile.type.startsWith('video/');
+
+            let previewHtml = '';
+            if (isImg) {
+                previewHtml = `<div class="preview-container"><img src="${viewUrl}" alt="Preview"></div>`;
+            } else if (isVid) {
+                previewHtml = `<div class="preview-container"><video src="${viewUrl}" controls playsinline></video></div>`;
+            }
+
             let html = `
                 <div class="vault-found-card">
                     <div class="vault-found-header">
-                        <span>Vault Found • 1 File Ready</span>
+                        <span>1 File Ready</span>
                         <span>Key: ${pin}</span>
                     </div>
+                    ${previewHtml}
                     <div class="file-item" style="background: var(--surface); margin-bottom: 12px;">
-                        <div class="file-preview">
-                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-                        </div>
                         <div class="file-info">
                             <div class="file-name">${escapeHTML(singleFile.name)}</div>
-                            <div class="file-size">Ready for download</div>
+                            <div class="file-size">${isImg ? 'Photo' : isVid ? 'Video' : 'Document'}</div>
                         </div>
                     </div>
                     <a href="/api/file/${encodeURIComponent(pin)}/0" download="${escapeHTML(singleFile.name)}" class="cta" style="text-decoration:none;">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                        Download File to Device
+                        Download File
                     </a>
                 </div>
             `;
             resultBox.innerHTML = html;
-            showToast('Files located! Tap to download');
             return;
         }
 
-        // MULTIPLE FILES LIST
+        // MULTIPLE FILES LIST WITH INDIVIDUAL PREVIEW LINKS
         let html = `
             <div class="vault-found-card">
                 <div class="vault-found-header">
-                    <span>Vault Found • ${data.files.length} Files</span>
+                    <span>${data.files.length} Files Ready</span>
                     <span>Key: ${pin}</span>
                 </div>
                 <div class="file-list" style="margin-bottom: 12px;">
         `;
         data.files.forEach((f, idx) => {
+            const isMedia = f.type && (f.type.startsWith('image/') || f.type.startsWith('video/'));
             html += `
                 <div class="file-item" style="background: var(--surface);">
                     <div class="file-info">
                         <div class="file-name">${escapeHTML(f.name)}</div>
                     </div>
-                    <a href="/api/file/${encodeURIComponent(pin)}/${idx}" download="${escapeHTML(f.name)}" class="btn-secondary" style="padding:6px 14px; flex:none;">Save</a>
+                    ${isMedia ? `<a href="/api/view/${encodeURIComponent(pin)}/${idx}" target="_blank" class="btn-secondary" style="padding:6px 10px; flex:none; font-size:10px;">👁 View</a>` : ''}
+                    <a href="/api/file/${encodeURIComponent(pin)}/${idx}" download="${escapeHTML(f.name)}" class="btn-secondary" style="padding:6px 12px; flex:none;">Save</a>
                 </div>
             `;
         });
@@ -1127,7 +1098,6 @@ async function verifyAndFetchVault() {
             </div>
         `;
         resultBox.innerHTML = html;
-        showToast('Vault verified! Choose files to save');
 
     } catch (e) {
         btn.disabled = false;
@@ -1145,7 +1115,6 @@ function showToast(msg) {
     toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// LINK AUTO-DETECTION: Only verifies and loads the UI
 window.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const pin = urlParams.get('pin');
