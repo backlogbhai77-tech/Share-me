@@ -586,6 +586,28 @@ input[type=file] {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Single & Multiple Download Card in Receiver Tab */
+.vault-found-card {
+    background: rgba(14, 20, 31, 0.8);
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 14px;
+    padding: 16px;
+    margin-top: 14px;
+    text-align: left;
+}
+
+.vault-found-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--success);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
 /* ---------------- STATS / USP ---------------- */
 
 .features {
@@ -813,17 +835,18 @@ input[type=file] {
             <div class="receive-sub">Enter the 4-digit key provided by sender</div>
             <input type="tel" inputmode="numeric" maxlength="4" class="pin-input" id="pinInput" placeholder="····">
             
-            <button class="cta" id="fetchBtn" onclick="triggerDownload()">
+            <button class="cta" id="fetchBtn" onclick="verifyAndFetchVault()">
                 <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                Retrieve Files
+                Verify & Show Files
             </button>
 
             <div class="receiver-loading" id="receiveLoader">
                 <div class="spinner-ring"></div>
-                <div style="font-size: 11px; color: var(--muted);">Connecting to vault...</div>
+                <div style="font-size: 11px; color: var(--muted);">Verifying key with server...</div>
             </div>
 
-            <div id="downloadResult" style="margin-top: 14px;"></div>
+            <!-- Vault Result Area -->
+            <div id="downloadResult"></div>
         </section>
     </main>
 </div>
@@ -996,7 +1019,7 @@ function shareDirectLink() {
     if (navigator.share) {
         navigator.share({
             title: 'VoltDrop File Transfer',
-            text: `Here are your files! Use PIN: ${pin}`,
+            text: `Files shared with you on VoltDrop! Key: ${pin}`,
             url: directUrl
         }).catch(() => {});
     } else {
@@ -1023,10 +1046,11 @@ function startCountdown(seconds) {
 }
 
 document.getElementById('pinInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') triggerDownload();
+    if (e.key === 'Enter') verifyAndFetchVault();
 });
 
-async function triggerDownload() {
+// Receiver Side: Verify Code and Show Files in UI (No premature auto-download popup)
+async function verifyAndFetchVault() {
     const pin = document.getElementById('pinInput').value.trim();
     if (!/^\d{4}$/.test(pin)) return showToast('Enter a valid 4-digit key');
 
@@ -1045,42 +1069,65 @@ async function triggerDownload() {
         btn.disabled = false;
         loader.style.display = 'none';
 
-        if (!res.ok) throw new Error(data.error || 'Invalid key');
+        if (!res.ok) throw new Error(data.error || 'Invalid or expired key');
 
-        // Single file: Auto download
+        // SINGLE FILE CARD: User gets full site view, then clicks download
         if (data.files.length === 1) {
-            showToast('Downloading file...');
-            const a = document.createElement('a');
-            a.href = `/api/file/${encodeURIComponent(pin)}/0`;
-            a.download = data.files[0].name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            const singleFile = data.files[0];
+            let html = `
+                <div class="vault-found-card">
+                    <div class="vault-found-header">
+                        <span>Vault Found • 1 File Ready</span>
+                        <span>Key: ${pin}</span>
+                    </div>
+                    <div class="file-item" style="background: var(--surface); margin-bottom: 12px;">
+                        <div class="file-preview">
+                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                        </div>
+                        <div class="file-info">
+                            <div class="file-name">${escapeHTML(singleFile.name)}</div>
+                            <div class="file-size">Ready for download</div>
+                        </div>
+                    </div>
+                    <a href="/api/file/${encodeURIComponent(pin)}/0" download="${escapeHTML(singleFile.name)}" class="cta" style="text-decoration:none;">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                        Download File to Device
+                    </a>
+                </div>
+            `;
+            resultBox.innerHTML = html;
+            showToast('Files located! Tap to download');
             return;
         }
 
-        // Multiple files list + ZIP
+        // MULTIPLE FILES LIST
         let html = `
-            <div style="text-align:left;">
-                <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">Select file to save:</div>
-                <div class="file-list">
+            <div class="vault-found-card">
+                <div class="vault-found-header">
+                    <span>Vault Found • ${data.files.length} Files</span>
+                    <span>Key: ${pin}</span>
+                </div>
+                <div class="file-list" style="margin-bottom: 12px;">
         `;
         data.files.forEach((f, idx) => {
             html += `
-                <div class="file-item">
-                    <div class="file-info"><div class="file-name">${escapeHTML(f.name)}</div></div>
-                    <a href="/api/file/${encodeURIComponent(pin)}/${idx}" download="${escapeHTML(f.name)}" class="btn-secondary" style="padding:6px 12px; flex:none;">Save</a>
+                <div class="file-item" style="background: var(--surface);">
+                    <div class="file-info">
+                        <div class="file-name">${escapeHTML(f.name)}</div>
+                    </div>
+                    <a href="/api/file/${encodeURIComponent(pin)}/${idx}" download="${escapeHTML(f.name)}" class="btn-secondary" style="padding:6px 14px; flex:none;">Save</a>
                 </div>
             `;
         });
         html += `
                 </div>
-                <button class="cta" style="margin-top:10px; background:var(--surface3); box-shadow:none; border:1px solid var(--border2);" onclick="window.location.href='/api/zip/${encodeURIComponent(pin)}'">
-                    📦 Download All (.ZIP)
+                <button class="cta" style="background:var(--surface3); box-shadow:none; border:1px solid var(--border2);" onclick="window.location.href='/api/zip/${encodeURIComponent(pin)}'">
+                    📦 Download All in One ZIP
                 </button>
             </div>
         `;
         resultBox.innerHTML = html;
+        showToast('Vault verified! Choose files to save');
 
     } catch (e) {
         btn.disabled = false;
@@ -1098,15 +1145,15 @@ function showToast(msg) {
     toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
 }
 
-// AUTO-PIN DETECTOR ON URL LOAD
+// LINK AUTO-DETECTION: Only verifies and loads the UI
 window.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const pin = urlParams.get('pin');
     if (pin && /^\d{4}$/.test(pin)) {
         switchTab('receive');
         document.getElementById('pinInput').value = pin;
-        showToast(`Auto-detected PIN: ${pin}`);
-        setTimeout(() => triggerDownload(), 300);
+        showToast(`Key detected: ${pin}`);
+        setTimeout(() => verifyAndFetchVault(), 200);
     }
 });
 </script>
