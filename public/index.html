@@ -397,7 +397,7 @@ input[type=file] {
     height: 14px;
 }
 
-/* ---------------- CTA BUTTON (FIXED SVG SCALING) ---------------- */
+/* ---------------- CTA BUTTON ---------------- */
 
 .cta {
     width: 100%;
@@ -417,7 +417,6 @@ input[type=file] {
     transition: all 0.2s ease;
 }
 
-/* Yahan fix kar diya: SVG ab 16px se bada nahi hoga */
 .cta svg {
     width: 16px !important;
     height: 16px !important;
@@ -511,6 +510,7 @@ input[type=file] {
 .btn-secondary svg {
     width: 13px;
     height: 13px;
+    flex-shrink: 0;
 }
 
 .expiry {
@@ -564,7 +564,6 @@ input[type=file] {
     box-shadow: 0 0 14px var(--primary-glow);
 }
 
-/* Professional loading box */
 .receiver-loading {
     display: none;
     margin-top: 14px;
@@ -700,14 +699,14 @@ input[type=file] {
         </div>
         <div class="status">
             <span class="status-dot"></span>
-            Wi-Fi Direct
+            Cloud Relay
         </div>
     </header>
 
     <section class="hero">
         <div class="hero-badge">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004 11m0 0a8 8 0 00-.001.132"/></svg>
-            Peer-To-Peer Relay
+            Instant Fast Transfer
         </div>
         <h1>Transfer files <span>anywhere.</span></h1>
         <p>No storage retention, no accounts. Direct transfer via secure one-time keys.</p>
@@ -732,11 +731,11 @@ input[type=file] {
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                 </div>
                 <div class="drop-title" id="dropTitle">Choose or drop files</div>
-                <div class="drop-sub">Send anything up to available RAM limits</div>
+                <div class="drop-sub">Fast relay to phone, PC or tablet</div>
                 <div class="drop-types">
                     <span class="tag">Images</span>
-                    <span class="tag">Documents</span>
-                    <span class="tag">Archive</span>
+                    <span class="tag">Videos</span>
+                    <span class="tag">Files</span>
                 </div>
             </label>
             <input type="file" id="fileInput" multiple>
@@ -769,11 +768,15 @@ input[type=file] {
                     Transfer Code Ready
                 </div>
                 <div class="pin" id="finalPin">0000</div>
-                <div class="pin-help">Enter this single-use code on recipient device</div>
+                <div class="pin-help">Share PIN or send direct 1-tap download link</div>
                 <div class="pin-actions">
                     <button class="btn-secondary" onclick="copyPin()">
                         <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-                        Copy Key
+                        Copy PIN
+                    </button>
+                    <button class="btn-secondary" style="background: rgba(56, 189, 248, 0.1); border-color: rgba(56, 189, 248, 0.3); color: var(--primary);" onclick="shareDirectLink()">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                        Share Link
                     </button>
                 </div>
                 <div class="expiry" id="expiryTimer">
@@ -815,13 +818,11 @@ input[type=file] {
                 Retrieve Files
             </button>
 
-            <!-- Loading Spinner -->
             <div class="receiver-loading" id="receiveLoader">
                 <div class="spinner-ring"></div>
                 <div style="font-size: 11px; color: var(--muted);">Connecting to vault...</div>
             </div>
 
-            <!-- Result list -->
             <div id="downloadResult" style="margin-top: 14px;"></div>
         </section>
     </main>
@@ -988,6 +989,23 @@ function copyPin() {
     navigator.clipboard.writeText(pin).then(() => showToast('Key copied to clipboard'));
 }
 
+function shareDirectLink() {
+    const pin = document.getElementById('finalPin').innerText;
+    const directUrl = `${window.location.origin}/?pin=${pin}`;
+
+    if (navigator.share) {
+        navigator.share({
+            title: 'VoltDrop File Transfer',
+            text: `Here are your files! Use PIN: ${pin}`,
+            url: directUrl
+        }).catch(() => {});
+    } else {
+        navigator.clipboard.writeText(directUrl).then(() => {
+            showToast('Link copied! Paste in any chat');
+        });
+    }
+}
+
 function startCountdown(seconds) {
     clearInterval(countdownTimer);
     let sec = seconds;
@@ -1004,7 +1022,6 @@ function startCountdown(seconds) {
     }, 1000);
 }
 
-// Enter key shortcut
 document.getElementById('pinInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') triggerDownload();
 });
@@ -1030,7 +1047,7 @@ async function triggerDownload() {
 
         if (!res.ok) throw new Error(data.error || 'Invalid key');
 
-        // Single file: Direct auto download (direct gallery / downloads)
+        // Single file: Auto download
         if (data.files.length === 1) {
             showToast('Downloading file...');
             const a = document.createElement('a');
@@ -1042,7 +1059,7 @@ async function triggerDownload() {
             return;
         }
 
-        // Multiple files: interactive list + ZIP option
+        // Multiple files list + ZIP
         let html = `
             <div style="text-align:left;">
                 <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">Select file to save:</div>
@@ -1080,6 +1097,18 @@ function showToast(msg) {
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
 }
+
+// AUTO-PIN DETECTOR ON URL LOAD
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const pin = urlParams.get('pin');
+    if (pin && /^\d{4}$/.test(pin)) {
+        switchTab('receive');
+        document.getElementById('pinInput').value = pin;
+        showToast(`Auto-detected PIN: ${pin}`);
+        setTimeout(() => triggerDownload(), 300);
+    }
+});
 </script>
 </body>
 </html>
